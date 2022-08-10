@@ -133,9 +133,14 @@ HANDLE       g_FenceEvent;
 //If we are going to use VSync.
 bool g_VSync = true;
 
+
+//Sometimes we want to use a custom vsync technology, we can let the tearing occur so the application can decide when the vertical refresh should be done
 bool g_TearingSupported = false;
 
+//Fullscreen toggle variable.
+bool g_Fullscreen = false;
 
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 int main()
 {
