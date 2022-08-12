@@ -61,7 +61,7 @@ HWND g_hWnd;
 //when switching back to window.
 RECT g_WindowRect;
 
-//-- DirectX 12 Objects --
+//-------------- DirectX 12 Objects
 
 //The device is the virtual handle of the DirectX in the GPU. We will create everything DX12 related from a Device.
 ID3D12Device2* g_Device = nullptr;
@@ -104,7 +104,7 @@ uint32_t g_RTVDescriptorSize = 0;
 uint32_t g_CurrentBackBufferIndex = 0;
 
 
-// ------- DX12 Synchronization Objects
+// -------------- DX12 Synchronization Objects
 
 //Let's say you are writing to a texture in the CPU so the GPU can use this texture.
 //We have right now 3 command allocators, those command allocators will have read or even draw commands to this texture.
@@ -140,10 +140,55 @@ bool g_TearingSupported = false;
 //Fullscreen toggle variable.
 bool g_Fullscreen = false;
 
-LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+//This function will handle OS events/messages
+LRESULT WndProc(HWND, UINT, WPARAM, LPARAM);
 
 int main()
 {
+	//Before creating everything, we must create our debug layer. This is a helper feature of DX12, the API will try to give us hints in wrong stuff we did. 
+	//We have to create it before our ID3D12Device or it will not create the device with the right properties and it will remove the device on runtime.
+	//Also, before doing anything related to DX12, it is recommended to initialize the debug layer. So we can have
+	//messages in case anything went wrong. This includes the creation of the device, so we can have more info in case of failure.
+
+#ifdef _DEBUG
+	ID3D12Debug* debugInterface;
+
+	//Get the Debug Interface and enable the Debug Layer.
+	//IID_PPV_ARGS is just a macro that looks the type of the variable we are sending in order to compute its IID (like an UIID)
+	//once the IID is computed and passed, it retrieves the interface pointer and assign our variable to it, in this case, it makes debugInterface
+	//to point to the internal debug interface.
+	//Everytime we have something that requires a separate IID and a interface pointer, we must use this macro. A lot of confusion can occur when 
+	//trying to do this by hand. This macro ensures that we are being persistent on the type of the variable, pointer and interface.
+	D3D12GetDebugInterface(IID_PPV_ARGS(&debugInterface));
+	debugInterface->EnableDebugLayer();
+#endif
+
+	// -------------- Windows Window Creation 
+	//Before creating our Window instance, we must fill a layout (class) that we want our Window to have. Some sort of properties.
+
+	WNDCLASSEXW windowClass = {};
+
+	HINSTANCE hInstance = GetModuleHandle(nullptr);
+
+	windowClass.cbSize        = sizeof(WNDCLASSEX);             // The size in bytes of this structure.
+	windowClass.style         = CS_HREDRAW | CS_VREDRAW;		// Class style. CS_HREDRAW means that we will redraw all the window if we change the window width (and CS_VREDRAW for height)
+	windowClass.lpfnWndProc   = &WndProc;						// A pointer to the function that will handle the events of this window. We forward decleared it above.
+	windowClass.cbClsExtra    = 0;								// Number of extra bytes to allocate for this class structure, we will not use this.
+	windowClass.cbWndExtra    = 0;								// Number of extra bytes to allocate for this window instance, we will not use this.
+	windowClass.hInstance     = hInstance;						// A handle to the instance that contains the window procedure for the class. We also use the hInstance to identify in case more than one .dll uses the same class name. 
+	windowClass.hIcon         = LoadIcon(hInstance, NULL);		//
+	windowClass.hCursor       = LoadCursor(NULL, IDC_ARROW);	//
+	windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);		//
+	windowClass.lpszMenuName  = NULL;							//
+	windowClass.lpszClassName = L"D3D12 Hello Triangle Window";	//
+	windowClass.hIconSm       = LoadIcon(hInstance, NULL);		//
+
+	ATOM registerResult = RegisterClassExW(&windowClass);
 	
+	D3D_ASSERT(registerResult > 0, "failed to register Window class.");
+	
+
+
+
 	return 0;
 }
