@@ -165,7 +165,8 @@ int main()
 
 	// -------------- Windows Window Creation 
 	//Before creating our Window instance, we must fill a layout (class) that we want our Window to have. Some sort of properties.
-
+	//A lot of features we will not be using, since we will render in the whole screen ourselves. Like Menu feature, background color and its brushes etc...
+	
 	WNDCLASSEXW windowClass = {};
 
 	HINSTANCE hInstance = GetModuleHandle(nullptr);
@@ -176,17 +177,26 @@ int main()
 	windowClass.cbClsExtra    = 0;								// Number of extra bytes to allocate for this class structure, we will not use this.
 	windowClass.cbWndExtra    = 0;								// Number of extra bytes to allocate for this window instance, we will not use this.
 	windowClass.hInstance     = hInstance;						// A handle to the instance that contains the window procedure for the class. We also use the hInstance to identify in case more than one .dll uses the same class name. 
-	windowClass.hIcon         = LoadIcon(hInstance, NULL);		//
-	windowClass.hCursor       = LoadCursor(NULL, IDC_ARROW);	//
-	windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);		//
-	windowClass.lpszMenuName  = NULL;							//
-	windowClass.lpszClassName = L"D3D12 Hello Triangle Window";	//
-	windowClass.hIconSm       = LoadIcon(hInstance, NULL);		//
+																// A very simply but informative resource on that (hInstance): https://devblogs.microsoft.com/oldnewthing/20050418-59/?p=35873
+	windowClass.hIcon         = LoadIcon(hInstance, NULL);		// The icon of the window to be loaded, in the top left corner or in the taskbar
+	windowClass.hCursor       = LoadCursor(NULL, IDC_ARROW);	// The cursor inside the window, we will be using the default
+	windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);		// The color of the background or the handle to the brush used to paint the background. We will not use this as we will be doing the paint process ourselves.
+	windowClass.lpszMenuName  = NULL;							// Resource name of the window menu class. We will use the default.
+	windowClass.lpszClassName = L"D3D12 Hello Triangle Window";	// The name of the window class, this is important, we will use this class name to create the window. This is basically the name of our layout/style/class.
+	windowClass.hIconSm       = LoadIcon(hInstance, NULL);		// A handle to a small icon that this class will be using. If NULL, it will try to search the icon resource specified by the hIcon for an icon of the appropriate size to use as the small icon
 
+	//Let's try to register our window layout.
 	ATOM registerResult = RegisterClassExW(&windowClass);
 	
 	D3D_ASSERT(registerResult > 0, "failed to register Window class.");
 	
+	//To create our window in the right position of the screen and with the right dimensions, we need to do some calculations first.
+	
+	//We use the GetSystemMetrics function to retrieve a specific system information. In this case, SM_CXSCREEN and SM_CYSCREEN are used
+	//to retrieve the width and height of the primary display monitor screen in pixels.
+	int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+	int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+
 
 
 
