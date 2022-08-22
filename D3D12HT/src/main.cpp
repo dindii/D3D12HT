@@ -197,6 +197,25 @@ int main()
 	int screenWidth = GetSystemMetrics(SM_CXSCREEN);
 	int screenHeight = GetSystemMetrics(SM_CYSCREEN);
 
+	//This will be our first window rect. We are creating with the size of the whole window.
+	RECT windowRect = { 0, 0, (LONG)screenWidth, (LONG)screenHeight };
+
+	//We will pass our RECT and adjust it to client area. 
+	//Client Area is basically the area we will be using in our window, for instance, we would exclude the top part that has the 
+	//"minimize", "expand" and "close" options. Client area would be everything below that top bar.
+	//And as we are passing the whole window in the RECT, we just need to adjust it to not include the top bar.
+	//WS_OVERLAPPEDWINDOW is a style that describes a window that can be minimized, maximized and has a thick window frame
+	//(We will not be including none of this in our client area)
+	//And then we pass FALSE because we will not be using any menu.
+	AdjustWindowRect(&windowRect, WS_OVERLAPPEDWINDOW, FALSE);
+
+	//We use this Client Area RECT to find out what our real window width and height is.
+	//Let's say we have a Screen with 10px. Our left starts at pixel 5 and goes to pixel 10.
+	//Then, right - left, would gives 5px. And 5px is our window width.
+	//We do some treatment first because we need to get the right values to do this calculation, this is, the client area.
+	//In this model, we should get a fullscreen window, or so.
+	int windowWidth  = windowRect.right - windowRect.left;
+	int windowHeight = windowRect.bottom - windowRect.top;
 
 
 
