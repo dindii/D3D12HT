@@ -39,6 +39,8 @@ using namespace Microsoft::WRL;
 
 #include <Windows.h>
 
+//For general utilities, like the "max" function (better than include the whole <algorithm>) (=
+#include "util/utils.h"
 
 //This is the number of backbuffers we have. This is, how many targets we are rendering while a target is being shown
 //While the program is presenting a frame to the screen, we are drawing another one under the hood.
@@ -141,7 +143,7 @@ bool g_TearingSupported = false;
 bool g_Fullscreen = false;
 
 //This function will handle OS events/messages
-LRESULT WndProc(HWND, UINT, WPARAM, LPARAM);
+LRESULT WndProc(HWND, UINT, WPARAM, LPARAM) { return {}; };
 
 int main()
 {
@@ -167,7 +169,7 @@ int main()
 	//Before creating our Window instance, we must fill a layout (class) that we want our Window to have. Some sort of properties.
 	//A lot of features we will not be using, since we will render in the whole screen ourselves. Like Menu feature, background color and its brushes etc...
 	
-	WNDCLASSEXW windowClass = {};
+	WNDCLASSEX windowClass = {};
 
 	HINSTANCE hInstance = GetModuleHandle(nullptr);
 
@@ -182,11 +184,11 @@ int main()
 	windowClass.hCursor       = LoadCursor(NULL, IDC_ARROW);	// The cursor inside the window, we will be using the default
 	windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);		// The color of the background or the handle to the brush used to paint the background. We will not use this as we will be doing the paint process ourselves.
 	windowClass.lpszMenuName  = NULL;							// Resource name of the window menu class. We will use the default.
-	windowClass.lpszClassName = L"D3D12 Hello Triangle Window";	// The name of the window class, this is important, we will use this class name to create the window. This is basically the name of our layout/style/class.
+	windowClass.lpszClassName = "D3D12 Hello Triangle Window";	// The name of the window class, this is important, we will use this class name to create the window. This is basically the name of our layout/style/class.
 	windowClass.hIconSm       = LoadIcon(hInstance, NULL);		// A handle to a small icon that this class will be using. If NULL, it will try to search the icon resource specified by the hIcon for an icon of the appropriate size to use as the small icon
 
 	//Let's try to register our window layout.
-	ATOM registerResult = RegisterClassExW(&windowClass);
+	ATOM registerResult = RegisterClassEx(&windowClass);
 	
 	D3D_ASSERT(registerResult > 0, "failed to register Window class.");
 	
@@ -209,6 +211,7 @@ int main()
 	//And then we pass FALSE because we will not be using any menu.
 	AdjustWindowRect(&windowRect, WS_OVERLAPPEDWINDOW, FALSE);
 
+	//#TODO - CHECK THIS INFO BELOW
 	//We use this Client Area RECT to find out what our real window width and height is.
 	//Let's say we have a Screen with 10px. Our left starts at pixel 5 and goes to pixel 10.
 	//Then, right - left, would gives 5px. And 5px is our window width.
@@ -217,7 +220,12 @@ int main()
 	int windowWidth  = windowRect.right - windowRect.left;
 	int windowHeight = windowRect.bottom - windowRect.top;
 
+	int windowX = HelloTriangle::HTMax<int>(0, (screenWidth - windowWidth) / 2);
+	int windowY = HelloTriangle::HTMax<int>(0, (screenHeight - windowHeight) / 2);
 
+	g_hWnd = CreateWindowEx(NULL, windowClass.lpszClassName, "Hello Triangle!", WS_OVERLAPPEDWINDOW, windowX, windowY, windowWidth, windowHeight, NULL, NULL, hInstance, nullptr);
+
+	D3D_ASSERT(g_hWnd, "Failed to create window!");
 
 	return 0;
 }
