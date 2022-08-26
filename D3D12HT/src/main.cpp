@@ -47,10 +47,9 @@ using namespace Microsoft::WRL;
 //i.e 2 = double buffering, 3 = triple buffering etc...
 const uint8_t g_NumFrames = 3;
 
-//Our initial client dimensions.
-//client area = the area of a window that is not the border (like where it shows the window's name etc)
-uint32_t g_ClientWidth = 1280;
-uint32_t g_ClientHeight = 720;
+//Our initial window dimensions, we will be updating this once we take the screen size.
+uint32_t g_WindowWidth  = 1280;
+uint32_t g_WindowHeight = 720;
 
 //Set to true once the DX12 objects have been initialized.
 bool g_IsInitialized = false;
@@ -104,7 +103,7 @@ uint32_t g_RTVDescriptorSize = 0;
 //we will increment this, and in the next iteration, we will be drawing/recording commands in the backbuffer 1.
 //Not always the back buffers will be sequential (depending on the flip model of the swap chain) so the swap chain will return to us the next index to use.
 uint32_t g_CurrentBackBufferIndex = 0;
-
+// --------------
 
 // -------------- DX12 Synchronization Objects
 
@@ -131,6 +130,7 @@ uint64_t     g_FrameFenceValues[g_NumFrames] = {};
 
 //This will be an OS event, Windows will tell us that our GPU fence value has reached our CPU fence value, through this event.
 HANDLE       g_FenceEvent;
+// --------------
 
 //If we are going to use VSync.
 bool g_VSync = true;
@@ -139,11 +139,9 @@ bool g_VSync = true;
 //Sometimes we want to use a custom vsync technology, we can let the tearing occur so the application can decide when the vertical refresh should be done
 bool g_TearingSupported = false;
 
-//Fullscreen toggle variable.
-bool g_Fullscreen = false;
-
-//This function will handle OS events/messages
-LRESULT WndProc(HWND, UINT, WPARAM, LPARAM) { return {}; };
+//#TODO: DEFINE THIS BELOW!!! (with proper names etc)
+//This function will handle OS events/messages 
+LRESULT WndProc(HWND a, UINT b, WPARAM c, LPARAM d) { return DefWindowProc(a, b, c, d); };
 
 int main()
 {
@@ -192,40 +190,31 @@ int main()
 	
 	D3D_ASSERT(registerResult > 0, "failed to register Window class.");
 	
-	//To create our window in the right position of the screen and with the right dimensions, we need to do some calculations first.
-	
 	//We use the GetSystemMetrics function to retrieve a specific system information. In this case, SM_CXSCREEN and SM_CYSCREEN are used
-	//to retrieve the width and height of the primary display monitor screen in pixels.
-	int screenWidth = GetSystemMetrics(SM_CXSCREEN);
-	int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+	//to retrieve the width and height of the primary display monitor screen in pixels. So we update our screen width and height. It will take the whole screen but it will not be fullscreen.
+	g_WindowWidth = GetSystemMetrics(SM_CXSCREEN);
+	g_WindowHeight = GetSystemMetrics(SM_CYSCREEN);
 
-	//This will be our first window rect. We are creating with the size of the whole window.
-	RECT windowRect = { 0, 0, (LONG)screenWidth, (LONG)screenHeight };
+	//#NOTE: Usually we do some calculations to ensure that the window will always be inside screen bounds and at least at the middle (when not occupying the whole screen)
+	//I will not bother to do this here because our main topic is to learn DX12 and this window is good enough for everything we want.
+	//It will be a window with almost the size of the main display screen and it will still have the control bars above it.
 
-	//We will pass our RECT and adjust it to client area. 
-	//Client Area is basically the area we will be using in our window, for instance, we would exclude the top part that has the 
-	//"minimize", "expand" and "close" options. Client area would be everything below that top bar.
-	//And as we are passing the whole window in the RECT, we just need to adjust it to not include the top bar.
-	//WS_OVERLAPPEDWINDOW is a style that describes a window that can be minimized, maximized and has a thick window frame
-	//(We will not be including none of this in our client area)
-	//And then we pass FALSE because we will not be using any menu.
-	AdjustWindowRect(&windowRect, WS_OVERLAPPEDWINDOW, FALSE);
-
-	//#TODO - CHECK THIS INFO BELOW
-	//We use this Client Area RECT to find out what our real window width and height is.
-	//Let's say we have a Screen with 10px. Our left starts at pixel 5 and goes to pixel 10.
-	//Then, right - left, would gives 5px. And 5px is our window width.
-	//We do some treatment first because we need to get the right values to do this calculation, this is, the client area.
-	//In this model, we should get a fullscreen window, or so.
-	int windowWidth  = windowRect.right - windowRect.left;
-	int windowHeight = windowRect.bottom - windowRect.top;
-
-	int windowX = HelloTriangle::HTMax<int>(0, (screenWidth - windowWidth) / 2);
-	int windowY = HelloTriangle::HTMax<int>(0, (screenHeight - windowHeight) / 2);
-
-	g_hWnd = CreateWindowEx(NULL, windowClass.lpszClassName, "Hello Triangle!", WS_OVERLAPPEDWINDOW, windowX, windowY, windowWidth, windowHeight, NULL, NULL, hInstance, nullptr);
-
+	//The WS_OVERLAPPEDWINDOW basically defines a window with a thick frame. (WS_EX_OVERLAPPEDWINDOW combines WS_EX_WINDOWEDGE with WS_EX_CLIENTEDGE, all of this is about the window frame border)
+	//We pass the name of our created style/layout (it identifies using the name and not an ID or so)
+	//Then we define our window Style, in the first parameter, we set things about the window frame border. Now, we define that we want a window with that bar at the top with minimize, maximize and close functions.
+	//Styles are pretty trivial, you can have a easy read here https://docs.microsoft.com/en-us/previous-versions/ms960010(v=msdn.10), see what each one does and even combine them.
+	//We use CW_USEDEFAULT so the OS can decide where the upper-left corner of the screen will be placed.
+	//Then we pass the width, height, the parent window (NULL), the menu class (NULL), our hInstance and we pass nothing (last NULL) as being custom data.
+	g_hWnd = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, windowClass.lpszClassName, "Hello Triangle!", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, g_WindowWidth, g_WindowHeight, NULL, NULL, hInstance, nullptr);
+	
 	D3D_ASSERT(g_hWnd, "Failed to create window!");
+
+	//Now that we have a created window, we can continue to create our D3D12 pipeline. Further on, we will show the window.
+	//It was a short introduction since it is not our focus here but you should find plenty of information on Windows window creation. 
+	// --------------
+
+
+
 
 	return 0;
 }
