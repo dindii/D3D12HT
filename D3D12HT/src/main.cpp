@@ -205,13 +205,36 @@ int main()
 	//Styles are pretty trivial, you can have a easy read here https://docs.microsoft.com/en-us/previous-versions/ms960010(v=msdn.10), see what each one does and even combine them.
 	//We use CW_USEDEFAULT so the OS can decide where the upper-left corner of the screen will be placed.
 	//Then we pass the width, height, the parent window (NULL), the menu class (NULL), our hInstance and we pass nothing (last NULL) as being custom data.
-	g_hWnd = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, windowClass.lpszClassName, "Hello Triangle!", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, g_WindowWidth, g_WindowHeight, NULL, NULL, hInstance, nullptr);
+	g_hWnd = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, windowClass.lpszClassName, "Hello Triangle!", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, g_WindowWidth / 2, g_WindowHeight / 2, NULL, NULL, hInstance, nullptr);
 	
 	D3D_ASSERT(g_hWnd, "Failed to create window!");
 
 	//Now that we have a created window, we can continue to create our D3D12 pipeline. Further on, we will show the window.
-	//It was a short introduction since it is not our focus here but you should find plenty of information on Windows window creation. 
+	//It was a short introduction since window creation it is not our focus here but you should find plenty of information on Windows window creation. 
 	// --------------
+	
+
+	//Let's begin to create our D3D12 components!
+
+	//Firstly, we have to look for the best GPU in our system that supports D3D12. After finding this GPU, we will create the D3D12 handle for this GPU, this is, we will create the "handle of D3D12 of this GPU".
+	//And use this handle to access of all features of D3D12 that will run on this GPU.
+
+	//Let's get the best GPU that supports D3D12:
+
+	//Before querying for available adapters (GPUs), we must create a DXGI Factory, this will let us to create other important DXGI objects.
+	//As said before, the DXGI is for stuff that is not related to the graphics API itself but for infrastructure. 
+	//Looking for and retrieving handles to availables GPUs and its stats (GPU memory, clock, supported API versions etc...) is something related to infrastructure. 
+	IDXGIFactory4* dxgiFactory;
+	uint32_t createFactoryFlags = 0;
+	
+	//When enabling this debug flag, we are able to get errors when the factory fails to do an action (like creating a device or querying for adapters)
+#ifdef _DEBUG
+	createFactoryFlags = DXGI_CREATE_FACTORY_DEBUG;
+#endif
+
+	//Let's actually create our flag and check if everything went fine.
+	Check(CreateDXGIFactory2(createFactoryFlags, IID_PPV_ARGS(&dxgiFactory)), "Failed to create DXGIFactory!");
+
 
 
 
