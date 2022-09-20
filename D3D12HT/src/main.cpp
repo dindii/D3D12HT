@@ -224,7 +224,7 @@ int main()
 	//Before querying for available adapters (GPUs), we must create a DXGI Factory, this will let us to create other important DXGI objects.
 	//As said before, the DXGI is for stuff that is not related to the graphics API itself but for infrastructure. 
 	//Looking for and retrieving handles to availables GPUs and its stats (GPU memory, clock, supported API versions etc...) is something related to infrastructure. 
-	IDXGIFactory4* dxgiFactory;
+	IDXGIFactory4* dxgiFactory = nullptr;
 	uint32_t createFactoryFlags = 0;
 	
 	//When enabling this debug flag, we are able to get errors when the factory fails to do an action (like creating a device or querying for adapters)
@@ -232,12 +232,54 @@ int main()
 	createFactoryFlags = DXGI_CREATE_FACTORY_DEBUG;
 #endif
 
-	//Let's actually create our flag and check if everything went fine.
+	//Let's actually create our factory and check if everything went fine.
 	Check(CreateDXGIFactory2(createFactoryFlags, IID_PPV_ARGS(&dxgiFactory)), "Failed to create DXGIFactory!");
 
+	//Now we will use this factory to query for a good GPU candidate.
 
+	//Create a pointer to an adapter and let's fill this pointer
+	IDXGIAdapter1* adapter1 = nullptr;
 
+	//Adapter4 is an Adapter1 but with more features on it. Each AdapterN inherits from AdapterN-1 thus getting its features and adding more.
+	//EnumAdapters requires an Adapter1, so we will pass an Adapter1 and then cast this for an Adapter4, so we can use all features of Adapter4.
+	IDXGIAdapter4* adapter4 = nullptr;
 
+	//Usually, a safe parameter of a video card being better than other, is the available memory. 
+	//With this variable, we will try to get the GPU with the biggest dedicated video memory.
+	uint32_t maxDedicatedVideoMemory = 0;
+
+	//EnumAdapters will retrieve an Adapter in the provided index. This is, if we have 4 adapters, we can get the first GPU by calling EnumAdapers with 0 as index and so on.
+	//We will iterate the GPU list in order to get the best GPU. Eventually, when we try to get a GPU that doesn't exist (e.g: index 4 in the list of 4 GPUs range[0,3]) it will return DXGI_ERROR_NOT_FOUND for us.
+	for (uint32_t i = 0; dxgiFactory->EnumAdapters1(i, &adapter1) != DXGI_ERROR_NOT_FOUND; i++)
+	{
+		//Let's query this adapter for a descriptor. A descriptor... describes the adapter. We can get important information through it.
+		DXGI_ADAPTER_DESC1 adapterDesc1; 
+		adapter1->GetDesc1(&adapterDesc1);
+		
+		//Then, we check if this adapter is not a software adapter (this is, not an onboard GPUs) and if this adapter has higher memory quantity than the actual one
+		//this way, we will end up with the bigger memory GPU.
+		if ((adapterDesc1.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0 && adapterDesc1.DedicatedVideoMemory > maxDedicatedVideoMemory)
+		{
+			//With a good GPU candidate, we check if this GPU supports DX12. 
+			//For this, we will simulate a Device creation on this GPU.
+			//As said before, the device is the handle of the DirectX in the specified GPU.
+			//The device creation, asks for a pointer to an ID3D12Device so it can fill this pointer with the device object, but
+			//since we are simulating it, we can just pass nullptr as the argument.
+			HRESULT testCreation = D3D12CreateDevice(adapter1, D3D_FEATURE_LEVEL_12_0, __uuidof(ID3D12Device), nullptr);
+
+			//Why we are checking if this is S_FALSE if we want to know if our device creation was succeed?
+			//Well, in MSDN documentation, it is specified that, when we are passing nullptr for the device pointer AND the creation is succeeded, then it returns S_FALSE.
+			//So, D3D12CreateDevice knows when we are just testing if the adapter supports D3D12 and return  S_FALSE (1) to us when the adapter supports it.
+			if (testCreation == S_FALSE)
+			{
+				//If so, we just set it as our new best GPU and cast it to the equivalent Adapter4.
+				maxDedicatedVideoMemory = adapterDesc1.DedicatedVideoMemory;
+				adapter4 = static_cast<IDXGIAdapter4*>(adapter1);
+			}
+		}
+	}
+
+	//Let's go to our actual device creation (our DX12 Handle to this GPU, so we can use all features of this GPU using DX12)
 
 	return 0;
 }
