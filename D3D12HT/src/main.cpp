@@ -274,12 +274,77 @@ int main()
 			{
 				//If so, we just set it as our new best GPU and cast it to the equivalent Adapter4.
 				maxDedicatedVideoMemory = adapterDesc1.DedicatedVideoMemory;
-				adapter4 = static_cast<IDXGIAdapter4*>(adapter1);
+				Check(adapter1->QueryInterface<IDXGIAdapter4>(&adapter4));
 			}
 		}
 	}
 
 	//Let's go to our actual device creation (our DX12 Handle to this GPU, so we can use all features of this GPU using DX12)
+	//Mainly, our device will be used to create DX12 objects for our GPU. It will not be directly used to issue draw or dispatch commands
+	//but it will be used to create the command queue and the command list, that will be responsible for those commands.
+	//The device can be considered a memory context that tracks allocations in GPU memory. If you destroy the context, then, everything allocated by it
+	//will be destroyed as well.
+
+	//Create the device and check if it succeeds
+	Check(D3D12CreateDevice(adapter4, D3D_FEATURE_LEVEL_12_0, IID_PPV_ARGS(&g_Device)));
+
+#ifdef _DEBUG
+	ID3D12InfoQueue* pInfoQueue = nullptr;
+
+	g_Device->QueryInterface<ID3D12InfoQueue>(&pInfoQueue);
+	
+	if (pInfoQueue)
+	{
+		pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+		pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, TRUE);
+		pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, TRUE);
+	}
+#endif
+
+	//Now, we will create our command queue. 
+	D3D12_COMMAND_QUEUE_DESC commandQueueDescription = {};
+
+	//By setting the type of the command queue, we are saying for what this command queue will be used for.
+	//DIRECT type is basically everything. We can use it for draw, copy and compute commands. 
+	//We have other types of queues, like queues that are only made for compute commands (for compute shading) or copy commands.
+	//Sometimes it is useful to have separate queues for those operations and then sync them up at the end.
+	commandQueueDescription.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+
+	//Priority work just as fine on normal. To have a global realtime priority, the application would need those rights as well as support from the
+	//hardware.
+	commandQueueDescription.Priority = D3D12_COMMAND_QUEUE_PRIORITY_NORMAL;
+
+	//We don't really have to set any flags for this. Also, we don't need any useful flags for now.
+	commandQueueDescription.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+
+	//NodeMask is a concept of DX12 to identify more than one GPU. If you are using only one GPU, then you can use NodeMask == 0.
+	commandQueueDescription.NodeMask = 0;
+
+	//Create our command queue.
+	Check(g_Device->CreateCommandQueue(&commandQueueDescription, IID_PPV_ARGS(&g_CommandQueue)));
+
+
+
+	//Before creating our swap chain, let's support variable refresh rate displays (Nvidia G-Sync and AMD FreeSync)
+	//We will query if the display supports it and make some changes on the swap chain to match this support.
+	//To make this, we must allow tearing to be done, this way, the "v-sync" will be done by the display itself
+	
+	//We then, query for the IDXGIFactory5 interface in order to be able to use CheckFeatureSupport()
+	IDXGIFactory5* dxgiFactory5 = nullptr;
+	Check(dxgiFactory->QueryInterface<IDXGIFactory5>(&dxgiFactory5));
+	
+	BOOL tearingSupported = FALSE;
+	dxgiFactory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &tearingSupported, sizeof(tearingSupported));
+
+	g_TearingSupported = (bool)tearingSupported;
+
+	//Now that we know if we support tearing, let's create our swap chain.
+
+
+
+
+
+
 
 	return 0;
 }
