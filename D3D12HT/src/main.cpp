@@ -23,13 +23,13 @@
 //You are not missing anything important with this (knowledge-wise), we just avoid some boilerplate code.
 //If you are having problems to build this, probably you are on VS2017 and thus with an old Windows 10 SDK version.
 //#NOTE Find why in the hell VS are not finding this file even with include paths set. I hate having to hard code this.
-#include "../vendor/d3dx12.h"
+#include <d3dx12.h>
 
 //Lets import a basic assert.
-#include "util/simpleAssert.h"
+#include <util/simpleAssert.h>
 
 //We add this to check if our HRESULTs are fine or not.
-#include "util/d3dFailureCheck.h"
+#include <util/d3dFailureCheck.h>
 
 //Kinda boring to write Microsoft::WRL::ComPtr<> every time.
 using namespace Microsoft::WRL;
@@ -40,7 +40,7 @@ using namespace Microsoft::WRL;
 #include <Windows.h>
 
 //For general utilities, like the "max" function (better than include the whole <algorithm>) (=
-#include "util/utils.h"
+#include <util/utils.h>
 
 //This is the number of backbuffers we have. This is, how many targets we are rendering while a target is being shown
 //While the program is presenting a frame to the screen, we are drawing another one under the hood.
@@ -273,7 +273,7 @@ int main()
 			if (testCreation == S_FALSE)
 			{
 				//If so, we just set it as our new best GPU and cast it to the equivalent Adapter4.
-				maxDedicatedVideoMemory = adapterDesc1.DedicatedVideoMemory;
+				maxDedicatedVideoMemory = (uint32_t)adapterDesc1.DedicatedVideoMemory;
 				Check(adapter1->QueryInterface<IDXGIAdapter4>(&adapter4));
 			}
 		}
