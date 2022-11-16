@@ -340,9 +340,38 @@ int main()
 
 	//Now that we know if we support tearing, let's create our swap chain.
 
+	//Usually, we draw our scene into a texture, a simply image. But, if we want to present this image to the screen, then, we have to
+	//somehow communicate with the OS to show our image in one of its windows.
+	//The job of the swap chain is exactly to present our images to the screen. 
+	//The swap chain is fully optmized to do this. When creating it, we can set several options that better match to our application style.
+
+	//When rendering images with the swapchain, usually we have a back-buffer and a front-buffer. While we are presenting an image (called as front-buffer), we are drawing another one in the background (called back-buffer).
+	//When the back-buffer image is finally done, then, we just need to swap both.
+	//So now, the front-image is the one we just draw, and the back-buffer is the previous presented image (that we are probably erasing it all and drawing new stuff on it)
+
+	DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
+	swapChainDesc.Width  = g_WindowWidth;				         //The width  of the images we are going to write-to/present
+	swapChainDesc.Height = g_WindowHeight;				         // ^  height ^   ^    ^    ^   ^    ^    ^   ^          ^
+	swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;           //The structure that describes the display format. For this, each R, G, B and A will have 8 bits. (0-255)
+	swapChainDesc.Stereo = FALSE;                                //We set this to true if we are using 3D glasses... I guess we are not...
+	swapChainDesc.SampleDesc = { 1, 0 };				         //The quality of the anti-aliasing. Since we are using the swap FLIP model, this must be {1, 0}. 
+	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT; //With this, we tells DXGI for what we are using this swap chain. Since we are using it to present images to the screen, the usage is indeed DXGI_USAGE_RENDER_TARGET_OUTPUT
+	swapChainDesc.BufferCount = 2;                               //Specify how many buffers to create. We will set this to 2, as we will be using one for front and another for back buffer (double buffering).
+	swapChainDesc.Scaling = DXGI_SCALING_STRETCH;                //If the image is smaller than the screen, then, this option will specify to DXGI to strech the image to cover the whole screen. This is usually necessary if you choose a custom resolution
+	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;    //This specifies what DXGI should do with the buffers once they have been shown and are no longer of use. FLIP Discard tells it that we are erasing our buffer in order to draw again on it. 
+																 //You also could specify to maintain the buffers content (this would be good if we want to edit an image or just to add more stuff on top of it)
+	swapChainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;       //Indicates how we are going to handle transparency for the buffers. For now, we will not be using this.
+	
+	swapChainDesc.Flags = g_TearingSupported ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0; //Tells to the swap chain if we are allowing tearing in order to use variable refresh rate.
 
 
+	//Let's instantiate our swap chain object
+	IDXGISwapChain1* swapChain1 = nullptr;
+	Check(dxgiFactory->CreateSwapChainForHwnd(g_CommandQueue, g_hWnd, &swapChainDesc, nullptr, nullptr, &swapChain1));
+	
+	Check(dxgiFactory->MakeWindowAssociation(g_hWnd, DXGI_MWA_NO_ALT_ENTER));
 
+	Check(swapChain1->QueryInterface<IDXGISwapChain4>(&g_SwapChain));
 
 
 
