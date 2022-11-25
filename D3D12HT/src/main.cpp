@@ -151,13 +151,13 @@ int main()
 	//messages in case anything went wrong. This includes the creation of the device, so we can have more info in case of failure.
 
 #ifdef _DEBUG
-	ID3D12Debug* debugInterface;
+	ID3D12Debug* debugInterface = nullptr;
 
 	//Get the Debug Interface and enable the Debug Layer.
 	//IID_PPV_ARGS is just a macro that looks the type of the variable we are sending in order to compute its IID (like an UIID)
 	//once the IID is computed and passed, it retrieves the interface pointer and assign our variable to it, in this case, it makes debugInterface
 	//to point to the internal debug interface.
-	//Everytime we have something that requires a separate IID and a interface pointer, we must use this macro. A lot of confusion can occur when 
+	//Every time we have something that requires a separate IID and a interface pointer, we must use this macro. A lot of confusion can occur when 
 	//trying to do this by hand. This macro ensures that we are being persistent on the type of the variable, pointer and interface.
 	D3D12GetDebugInterface(IID_PPV_ARGS(&debugInterface));
 	debugInterface->EnableDebugLayer();
@@ -343,9 +343,9 @@ int main()
 	//Usually, we draw our scene into a texture, a simply image. But, if we want to present this image to the screen, then, we have to
 	//somehow communicate with the OS to show our image in one of its windows.
 	//The job of the swap chain is exactly to present our images to the screen. 
-	//The swap chain is fully optmized to do this. When creating it, we can set several options that better match to our application style.
+	//The swap chain is fully optimized to do this. When creating it, we can set several options that better match to our application style.
 
-	//When rendering images with the swapchain, usually we have a back-buffer and a front-buffer. While we are presenting an image (called as front-buffer), we are drawing another one in the background (called back-buffer).
+	//When rendering images with the swap chain, usually we have a back-buffer and a front-buffer. While we are presenting an image (called as front-buffer), we are drawing another one in the background (called back-buffer).
 	//When the back-buffer image is finally done, then, we just need to swap both.
 	//So now, the front-image is the one we just draw, and the back-buffer is the previous presented image (that we are probably erasing it all and drawing new stuff on it)
 
@@ -356,9 +356,9 @@ int main()
 	swapChainDesc.Stereo = FALSE;                                //We set this to true if we are using 3D glasses... I guess we are not...
 	swapChainDesc.SampleDesc = { 1, 0 };				         //The quality of the anti-aliasing. Since we are using the swap FLIP model, this must be {1, 0}. 
 	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT; //With this, we tells DXGI for what we are using this swap chain. Since we are using it to present images to the screen, the usage is indeed DXGI_USAGE_RENDER_TARGET_OUTPUT
-	swapChainDesc.BufferCount = 2;                               //Specify how many buffers to create. We will set this to 2, as we will be using one for front and another for back buffer (double buffering).
-	swapChainDesc.Scaling = DXGI_SCALING_STRETCH;                //If the image is smaller than the screen, then, this option will specify to DXGI to strech the image to cover the whole screen. This is usually necessary if you choose a custom resolution
-	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;    //This specifies what DXGI should do with the buffers once they have been shown and are no longer of use. FLIP Discard tells it that we are erasing our buffer in order to draw again on it. 
+	swapChainDesc.BufferCount = g_NumFrames;                               //Specify how many buffers to create. We will set this to 2, as we will be using one for front and another for back buffer (double buffering).
+	swapChainDesc.Scaling = DXGI_SCALING_STRETCH;                //If the image is smaller than the screen, then, this option will specify to DXGI to stretch the image to cover the whole screen. This is usually necessary if you choose a custom resolution
+	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;    //This specifies what DXGI should do with the buffers once they have been shown and as no longer of use. FLIP Discard tells it that we are erasing our buffer in order to draw again on it. 
 																 //You also could specify to maintain the buffers content (this would be good if we want to edit an image or just to add more stuff on top of it)
 	swapChainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;       //Indicates how we are going to handle transparency for the buffers. For now, we will not be using this.
 	
@@ -368,12 +368,81 @@ int main()
 	//Let's instantiate our swap chain object
 	IDXGISwapChain1* swapChain1 = nullptr;
 	Check(dxgiFactory->CreateSwapChainForHwnd(g_CommandQueue, g_hWnd, &swapChainDesc, nullptr, nullptr, &swapChain1));
-	
+	/* CreateSwapChainForHwnd arguments:
+	*  1 - A command queue of who we are creating this swap chain for
+	*  2 - The handle of the window that we are going to present to 
+	*  3 - The swap chain description
+	*  4 - The swap chain full screen description (set to null to create a windowed swap chain)
+ 	*  5 - To restrict the content to a specific window. An example of output is a monitor  
+	*  6 - An object to store the reference of the swap chain
+	*/
+
+	//We will handle the full screen switch manually. So we are disabling the ALT + ENTER command.
 	Check(dxgiFactory->MakeWindowAssociation(g_hWnd, DXGI_MWA_NO_ALT_ENTER));
 
+	//Let's cast our swap chain to a IDXGISwapChain4 and we are done!
 	Check(swapChain1->QueryInterface<IDXGISwapChain4>(&g_SwapChain));
 
 
+	//Now that we have our swap chain, we need to create the descriptors for the swap chain back buffers
+	//the descriptor basically describes a resource, this way the GPU knows how to process that resource.
+	//In our case, we will describe that our resource is a output target, its format and stuff like this
+	
+	//We need to store our descriptors somewhere. For this we have the Descriptor Heap.
+	//We will then create a descriptor heap and store our descriptors inside it.
+	//We have several types of views (or resources), they are:
+	// Render Target View (RTV), Shader Resource View (SRV), Unordered Access View (UAV)
+	// Constant Buffer View (CBV) and a Depth Stencil View (DSV)
+	//The CBV, SRV and UAV have the same size, so they can be stored in the same heap.
+	//But for RTV and Samplers, we have to create another heap for them.
 
+	//Let's create our descriptor heap:
+
+	D3D12_DESCRIPTOR_HEAP_DESC descriptorHeapDesc = {};
+	descriptorHeapDesc.NumDescriptors = g_NumFrames;            //The number of descriptors in the heap
+	descriptorHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;   //The type of views that we are going to store
+	descriptorHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE; // The only other option is the D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE flag
+	//When we are creating descriptors, the application can decide if it want to store the descriptor in the CPU before copying it to the GPU (to be shade accessible)
+	//with this flag, we say to the application to create descriptors directly to the shader visible descriptor heaps without staging anything on the CPU.
+	//This flag only works with CBV, SRV and UAV
+	descriptorHeapDesc.NodeMask = 0; //We can create a heap for a specific GPU. Since we are using only one GPU, let's keep this on zero.
+
+	//Create our heap
+	Check(g_Device->CreateDescriptorHeap(&descriptorHeapDesc, IID_PPV_ARGS(&g_RTVDescriptorHeap)));
+	
+	//Now we can proceed to create our views (descriptors).
+	//Let's create our Render Target View (a resource where we are gong to render out screen to)
+
+	//Get the size of a RTV on this device. (size is vendor specific)
+	g_RTVDescriptorSize = g_Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+	//We get the first handle of the heap, and we will use it to iterate our heap
+	//It is the same idea as taking the first element pointer of an array and adding + 1 to it
+	//Now, we have a pointer (inside this structure) to a descriptor inside the descriptor heap
+	CD3DX12_CPU_DESCRIPTOR_HANDLE firstRTVHandleIndex(g_RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+
+	//One descriptor for each render target buffer 
+	for (uint32_t i = 0; i < g_NumFrames; i++)
+	{
+		//Now, we get all the resources (all the backbuffers/render targets) that was created inside our swap chain
+		ID3D12Resource* renderTarget = nullptr;
+		Check(g_SwapChain->GetBuffer(i, IID_PPV_ARGS((&renderTarget))));
+
+		//Now we just need to create the render target view for the swap chain backbuffer resource.
+		//The first parameter is the resource that we are creating the descriptor to
+		//the second one is the description of the resource. Setting it to nullptr will make it to create a default descriptor for the resource
+		//In this case, the resource's internal description is used to create the RTV.
+		//The third parameter is only where we will store the descriptor. We will store it in this specific handle of the heap.
+		g_Device->CreateRenderTargetView(renderTarget, nullptr, firstRTVHandleIndex);
+
+		//Now that our render target resources are complete, we can save them for later use.
+		g_BackBuffers[i] = renderTarget;
+
+		//Let's advance the handles to the available index. So we get a new handle next time. (basically ptr + g_RTVDescriptorSize)
+		firstRTVHandleIndex.Offset(g_RTVDescriptorSize);
+	}
+
+	//Create a Command Allocator
+	
 	return 0;
 }
