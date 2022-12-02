@@ -515,6 +515,13 @@ int main()
 	//resize all the buffers of the swap chain, but the GPU could be using those buffers. So we can Flush the GPU, thus knowing when the GPU finished to use everything
 	//and now that we know, we can proceed to resize our buffers since there's no buffer being referenced anymore. 
 	//After flushing and doing what we want, we can proceed to the default behavior of our pipeline.
+	auto FlushCommandQueue = [SignalFence, WaitForFenceValue](ID3D12CommandQueue* commandQueue, ID3D12Fence* fence, uint64_t& currentFence, HANDLE fenceEvent)
+	{
+		uint64_t fenceValueToWait = SignalFence(commandQueue, fence, currentFence);
+		WaitForFenceValue(fence, fenceValueToWait, fenceEvent);
+	};
+
+	 //Let's implement Update and Render functions
 
 	return 0;
 }
