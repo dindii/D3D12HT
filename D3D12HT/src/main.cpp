@@ -431,7 +431,7 @@ int main()
 		//Now we just need to create the render target view for the swap chain backbuffer resource.
 		//The first parameter is the resource that we are creating the descriptor to
 		//the second one is the description of the resource. Setting it to nullptr will make it to create a default descriptor for the resource
-		//In this case, the resource's internal description is used to create the RTV.
+		//In this case, the resource's internal description is used to create the RTV (when you create a resource, it asks for a bunch of details, it will use those details).
 		//The third parameter is only where we will store the descriptor. We will store it in this specific handle of the heap.
 		g_Device->CreateRenderTargetView(renderTarget, nullptr, firstRTVHandleIndex);
 
@@ -441,8 +441,80 @@ int main()
 		//Let's advance the handles to the available index. So we get a new handle next time. (basically ptr + g_RTVDescriptorSize)
 		firstRTVHandleIndex.Offset(g_RTVDescriptorSize);
 	}
-
-	//Create a Command Allocator
 	
+	//Create a Command Allocator
+	//I already explained what a command allocator is, but as an additional detail, when the GPU finishes to consume all commands inside it
+	//we can reclaim or memory back by calling CommandAllocator->Reset(). We can only call Reset if the GPU finished to use all command allocator commands
+	//We will know that the GPU is done, through a fence.
+	//D3D12_COMMAND_LIST_TYPE_DIRECT defines that this command allocator will have regular commands that the GPU can execute.
+	//beside the type DIRECT we also have the type COMPUTE (for compute dispatches), BUNDLE and COPY.
+	for (uint32_t i = 0; i < g_NumFrames; i++)
+		Check(g_Device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&g_CommandAllocators[i])));
+
+	//Now, let's create our command list.
+	Check(g_Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_CommandAllocators[0], nullptr, IID_PPV_ARGS(&g_CommandList)));
+
+	//A command list is created in Recording state. The very first thing you want to do in the render loop is to Reset the command list.
+	//Before reseting a command list, we must close it (the very last thing). So, let's change its state to Closed so it can be reset in the first iteration of the loop.
+	Check(g_CommandList->Close());
+
+	//In order to know when the GPU finished to execute all commands of a command allocator, we must setup a fence
+	//so the GPU can signal this fence for us.
+	//Let's create our fences!
+
+	//We should create the fence with 0 as being the value.
+	Check(g_Device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g_Fence)));
+
+	//When the Fence reaches a specified value, it will trigger an event. As being the CPU, we can wait for this event to be triggered, thus knowing that the GPU finished all the job
+	//for this, let's create the event
+	//We also can wait as being the GPU, we can use the function CommandQueue::Wait(). But since usually the CPU is the bottleneck, let's begin with it
+	g_FenceEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
+	/* CreateEvent parameters:
+	* 1 - SECURITY_ATTRIBUTES, if null, the handle cannot be inherited by child processes.
+	* 2 - If TRUE, this event has to be reset manually. By false, it will be reseted after the thread is released
+	* 3 - If TRUE, the initial state is signaled. We want it to be non-signaled
+	* 4 - A simple name to it
+	*/
+
+	D3D_ASSERT(g_FenceEvent, "Failed to create fence event!");
+	
+	//For the tutorial's linearity sake, I will not declare and define a function above the main() function. Instead, I will "define a function inside main" through this 
+	//lambda and function pointer
+	//So we can follow along all the tutorial instead of having to place a function and say "we will come later here, just ignore for now".
+	//And since this is a snippet of code that we will be using frequently, it worths to create a function just for it
+	auto SignalFence = [](ID3D12CommandQueue* commandQueue, ID3D12Fence* fence, uint64_t& fenceValue ) -> uint64_t 
+	{
+		//Get the actual fence value and increment in the CPU
+		uint64_t fenceValueForSignal = ++fenceValue;
+
+		//Ask for the GPU to update its fence with this CPU value. (this is run on the GPU, the CPU will not stop here, we will continue through our function)
+		Check(commandQueue->Signal(fence, fenceValueForSignal));
+
+		//Returns the value that we want the GPU to be on. We then will use this value to compare if the GPU has reached our fence. This is, we will stall until this fence is
+		//equal fenceValueForSignal.
+		return fenceValueForSignal;
+	};
+
+	auto WaitForFenceValue = [](ID3D12Fence* fence, uint64_t fenceValueToWait, HANDLE fenceEvent)
+	{
+		//We check if the GPU has updated our fence to the CPU fence value
+		if (fence->GetCompletedValue() < fenceValueToWait)
+		{
+			//If not, we will ask this fence to trigger this event once it reached the desired fence (usually, the CPU fence value)
+			Check(fence->SetEventOnCompletion(fenceValueToWait, fenceEvent));
+
+			//And now, we will stall the CPU until this event is triggered (i.e: until the GPU finishes its work).
+			//You can optionally set for how long you want to wait. In our case, we will wait for millions of years, or in this case, for a INFINITE time.
+			::WaitForSingleObject(fenceEvent, INFINITE);
+		}
+	};
+
+	//Next, a useful function that we may use, is the Flush function. This function just insert a Signal in the Queue and waits for it.
+	//This is, we insert a Signal in the Queue, and when the GPU reaches that point, it will trigger an event for us, so we know that the GPU finished everything.
+	//This is useful when we want to do something with the resources that are being in use by the GPU. For example, when we want to resize the screen, we need to
+	//resize all the buffers of the swap chain, but the GPU could be using those buffers. So we can Flush the GPU, thus knowing when the GPU finished to use everything
+	//and now that we know, we can proceed to resize our buffers since there's no buffer being referenced anymore. 
+	//After flushing and doing what we want, we can proceed to the default behavior of our pipeline.
+
 	return 0;
 }
