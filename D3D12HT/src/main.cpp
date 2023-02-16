@@ -39,6 +39,9 @@ using namespace Microsoft::WRL;
 
 #include <Windows.h>
 
+//to use timers and get the actual time
+#include <chrono>
+
 //For general utilities, like the "max" function (better than include the whole <algorithm>) (=
 #include <util/utils.h>
 
@@ -208,6 +211,9 @@ int main()
 	g_hWnd = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, windowClass.lpszClassName, "Hello Triangle!", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, g_WindowWidth / 2, g_WindowHeight / 2, NULL, NULL, hInstance, nullptr);
 	
 	D3D_ASSERT(g_hWnd, "Failed to create window!");
+
+	//We will not show the window for now
+	//ShowWindow(g_hWnd, SW_SHOW);
 
 	//Now that we have a created window, we can continue to create our D3D12 pipeline. Further on, we will show the window.
 	//It was a short introduction since window creation it is not our focus here but you should find plenty of information on Windows window creation. 
@@ -455,6 +461,9 @@ int main()
 	Check(g_Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_CommandAllocators[0], nullptr, IID_PPV_ARGS(&g_CommandList)));
 
 	//A command list is created in Recording state. The very first thing you want to do in the render loop is to Reset the command list.
+	//Because of the command list is created in recording state, we need to specify a command allocator that this command list will record to
+	//when creating the command list (CreateCommandList)
+	//We also will need to do this with the Reset() function, because the Reset() will set the command list to the recording state.
 	//Before reseting a command list, we must close it (the very last thing). So, let's change its state to Closed so it can be reset in the first iteration of the loop.
 	Check(g_CommandList->Close());
 
@@ -522,6 +531,102 @@ int main()
 	};
 
 	 //Let's implement Update and Render functions
+	
+
+	//The update function will be super simple, it will just display the FPS on the VS debug output 
+
+	//Every time this function is called, we sum the frameCounter and the deltaTime to the elapsedSeconds
+	//Eventually, this elapsedSeconds will reach 1 second. Then, we just need to divide the frameCounter to the elapsedSeconds
+	//and we have all the frames we got in one second.
+	auto Update = []()
+	{
+		static uint64_t frameCounter = 0;
+		static double elapsedSeconds = 0.0f;
+		static std::chrono::high_resolution_clock clock;
+		static auto timeStart = clock.now();
+		
+		frameCounter++;
+		auto timeEnd = clock.now();
+		std::chrono::nanoseconds deltaTime = timeEnd - timeStart;
+		timeStart = timeEnd;
+
+		elapsedSeconds += deltaTime.count() * 1e-9;
+
+		if (elapsedSeconds > 1.0f)
+		{
+			char buffer[500];
+			double fps = frameCounter / elapsedSeconds;
+			sprintf_s(buffer, 500, "FPS: %f\n", fps);
+			OutputDebugString(buffer);
+
+			frameCounter = 0;
+			elapsedSeconds = 0.0f;
+		}
+
+	};
+
+	//The Draw/Render function will be made of two steps:
+	//Clear the back buffer
+	//Present the rendered frame
+	
+	//For simplicity, I will define the Render function below the main function
+
+	auto Render = [&SignalFence, &WaitForFenceValue]()
+	{
+		ID3D12CommandAllocator* commandAllocator = g_CommandAllocators[g_CurrentBackBufferIndex];
+		ID3D12Resource* backBuffer = g_BackBuffers[g_CurrentBackBufferIndex];
+
+		//Clear all commands (memory) so we can reuse this memory for further commands. PS: We must before assure that we have no commands to be executed
+		//or else it will fail
+		commandAllocator->Reset();
+
+		//Open our commandList for recording. When the CommandList is Reset, it will be open again to command recording, so we need to specify which 
+		//commandAllocator we will be using to store them
+		g_CommandList->Reset(commandAllocator, nullptr);
+
+		CD3DX12_RESOURCE_BARRIER PresentToWriteBarrier = CD3DX12_RESOURCE_BARRIER::Transition(backBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+		g_CommandList->ResourceBarrier(1, &PresentToWriteBarrier);
+
+
+		//==
+		float clearColor[] = { 0.4f, 0.6f, 0.9f, 1.0f };
+		CD3DX12_CPU_DESCRIPTOR_HANDLE rtv(g_RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), g_CurrentBackBufferIndex, g_RTVDescriptorSize);
+		g_CommandList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
+
+		//==
+		CD3DX12_RESOURCE_BARRIER WriteToPresentBarrier = CD3DX12_RESOURCE_BARRIER::Transition(backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+		g_CommandList->ResourceBarrier(1, &WriteToPresentBarrier);
+
+		//==
+		Check(g_CommandList->Close());
+		ID3D12CommandList* const commandLists[] = { g_CommandList };
+
+		//==
+		g_CommandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
+
+		// ==
+		UINT syncInterval = g_VSync ? 1 : 0;
+		UINT presentFlags = g_TearingSupported && !g_VSync ? DXGI_PRESENT_ALLOW_TEARING : 0;
+
+		//==
+		Check(g_SwapChain->Present(syncInterval, presentFlags));
+
+		//==
+		g_FrameFenceValues[g_CurrentBackBufferIndex] = SignalFence(g_CommandQueue, g_Fence, g_FenceValue);
+	
+		//==
+		g_CurrentBackBufferIndex = g_SwapChain->GetCurrentBackBufferIndex();
+
+		//==
+		WaitForFenceValue(g_Fence, g_FrameFenceValues[g_CurrentBackBufferIndex], g_FenceEvent);
+	};
+
+	while (true)
+	{
+		Update();
+		Render();
+	}
+
 
 	return 0;
 }
