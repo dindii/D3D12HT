@@ -402,6 +402,11 @@ int main()
 	//The CBV, SRV and UAV have the same size, so they can be stored in the same heap.
 	//But for RTV and Samplers, we have to create another heap for them.
 
+	//A resource is just a block of memory, a block of bytes, and a view tells us how we can interpret all of those data.
+	//If we have a resource that is a texture, we don't know if the texture is RGBA, or RGB, or even a R only texture.
+	//If we have a RGB data but the view thinks that our data is 1 channel only (R), it would interpret a RGB data as 3 different colors 
+	//and this is totally wrong. 
+
 	//Let's create our descriptor heap:
 
 	D3D12_DESCRIPTOR_HEAP_DESC descriptorHeapDesc = {};
