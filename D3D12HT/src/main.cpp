@@ -660,6 +660,14 @@ int main()
 		* 
 		* We will stale the CPU if the commands on Buffer 1 are still being executed (GPU) and we already recorded all commands to the Buffer 2 (CPU)
 		* and we need a new buffer to record commands. 
+		*
+		* PS: Internally, the SwapChain works like a Queue. The Present method is called but the BackBuffer is not instantly presented because it is still being 
+		* drawn. All the frames as presented as they are ready to go. As the SwapChain does have more context (as it is a queue), it can do a lot of different
+		* stuff with the frames, like, if it is presenting a frame but another frame is already done, it can discard this frame and present the next frame.
+		* We can different behaviors based on the type of the presentation model set when we create the swap chain.
+		* As the Present method is called, the CPU continues to execute all others instructions after this and let this sync for the GPU. 
+		* Our fence is only to ensure that we are not trying to write on a resource that the GPU is reading from. Like writing to a Command Allocator that are
+		* still being executed. It works like a read/write fence with a (busy-wait) stall behavior.
 		*/
 	};
 
@@ -672,3 +680,5 @@ int main()
 
 	return 0;
 }
+
+//We will define functions that are not directly related to rendering below. 
