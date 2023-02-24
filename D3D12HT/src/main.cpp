@@ -212,8 +212,8 @@ int main()
 	
 	D3D_ASSERT(g_hWnd, "Failed to create window!");
 
-	//We will not show the window for now
-	//ShowWindow(g_hWnd, SW_SHOW);
+	//Show the window just for testing purposes
+	ShowWindow(g_hWnd, SW_SHOW);
 
 	//Now that we have a created window, we can continue to create our D3D12 pipeline. Further on, we will show the window.
 	//It was a short introduction since window creation it is not our focus here but you should find plenty of information on Windows window creation. 
@@ -229,7 +229,7 @@ int main()
 
 	//Before querying for available adapters (GPUs), we must create a DXGI Factory, this will let us to create other important DXGI objects.
 	//As said before, the DXGI is for stuff that is not related to the graphics API itself but for infrastructure. 
-	//Looking for and retrieving handles to availables GPUs and its stats (GPU memory, clock, supported API versions etc...) is something related to infrastructure. 
+	//Looking for and retrieving handles to available GPUs and its stats (GPU memory, clock, supported API versions etc...) is something related to infrastructure. 
 	IDXGIFactory4* dxgiFactory = nullptr;
 	uint32_t createFactoryFlags = 0;
 	
@@ -262,7 +262,7 @@ int main()
 		DXGI_ADAPTER_DESC1 adapterDesc1; 
 		adapter1->GetDesc1(&adapterDesc1);
 		
-		//Then, we check if this adapter is not a software adapter (this is, not an onboard GPUs) and if this adapter has higher memory quantity than the actual one
+		//Then, we check if this adapter is not a software adapter (this is, not an on board GPUs) and if this adapter has higher memory quantity than the actual one
 		//this way, we will end up with the bigger memory GPU.
 		if ((adapterDesc1.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) == 0 && adapterDesc1.DedicatedVideoMemory > maxDedicatedVideoMemory)
 		{
@@ -584,41 +584,83 @@ int main()
 		//commandAllocator we will be using to store them
 		g_CommandList->Reset(commandAllocator, nullptr);
 
+		//== Right now, our resource that we are using as a Render Target is on Present State and in order to write to it, we must transition it to Render Target
+		//We can do this using the Transition method of the CD3DX12_RESOURCE_BARRIER helper struct.
 		CD3DX12_RESOURCE_BARRIER PresentToWriteBarrier = CD3DX12_RESOURCE_BARRIER::Transition(backBuffer, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+		
+		//After we created the barrier, we will issue a command to make this transition to run. Everything will run automatically since this barrier already
+		//knows what state to transition what resource
 		g_CommandList->ResourceBarrier(1, &PresentToWriteBarrier);
 
 
-		//==
+		//Now that our back buffer is ready to write, we will write the whole resource to an specific color. This is called "Clean".
+		//we will define a clean color as follows
 		float clearColor[] = { 0.4f, 0.6f, 0.9f, 1.0f };
+
+		//We then get the handle of our resource from the Descriptor Heap by passing the start of the heap (like the address of the first element of an array)
+		//and then we will pass the index that we want to jump forward and the size that we will be using to jump forward (literally like a pointer) 
 		CD3DX12_CPU_DESCRIPTOR_HANDLE rtv(g_RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), g_CurrentBackBufferIndex, g_RTVDescriptorSize);
+
+		//Submit the write command
 		g_CommandList->ClearRenderTargetView(rtv, clearColor, 0, nullptr);
 
-		//==
+		//In order to present our resource to the screen, we must transition again from the Render Target (write) to Present (read)
 		CD3DX12_RESOURCE_BARRIER WriteToPresentBarrier = CD3DX12_RESOURCE_BARRIER::Transition(backBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 		g_CommandList->ResourceBarrier(1, &WriteToPresentBarrier);
 
-		//==
+		//We will not be recording commands anymore to this list, so before we can make use of it, we must close it first.
 		Check(g_CommandList->Close());
+
+		//ExecuteCommandLists of our Queue expects a const array of CommandLists, even if we only have one we must create an array of CommandLists
 		ID3D12CommandList* const commandLists[] = { g_CommandList };
 
-		//==
+		//Send the CommandList to be executed by our command queue
 		g_CommandQueue->ExecuteCommandLists(_countof(commandLists), commandLists);
 
-		// ==
-		UINT syncInterval = g_VSync ? 1 : 0;
-		UINT presentFlags = g_TearingSupported && !g_VSync ? DXGI_PRESENT_ALLOW_TEARING : 0;
+		//Before presenting, we have to setup some properties and flags before. 
+		//By setting the Sync Interval to True, we are explicit saying that we want to cap our frame using vsync
+		uint32_t syncInterval = g_VSync ? 1 : 0;
 
-		//==
+		//If we are not using vsync and we do support variable refresh rates, we then will use the tearing mode
+		uint32_t presentFlags = g_TearingSupported && !g_VSync ? DXGI_PRESENT_ALLOW_TEARING : 0;
+
+		//Ask the swap chain to present it's active back buffer (the actual back buffer index)
 		Check(g_SwapChain->Present(syncInterval, presentFlags));
 
-		//==
+		// We will signal our fence to our current value + 1
 		g_FrameFenceValues[g_CurrentBackBufferIndex] = SignalFence(g_CommandQueue, g_Fence, g_FenceValue);
 	
-		//==
+		//Get the next render target
 		g_CurrentBackBufferIndex = g_SwapChain->GetCurrentBackBufferIndex();
 
-		//==
+		//Check if this new render target is suitable to use or if we must it to be executed first
 		WaitForFenceValue(g_Fence, g_FrameFenceValues[g_CurrentBackBufferIndex], g_FenceEvent);
+
+
+		/*
+		* In general, the GPU is doing a lot of stuff and it will not stop the CPU.
+		* That's why we execute the command list, queue the swap chain to present this frame when it is done
+		* and right away we get another buffer. This buffer could be in use, so we check it's fence value, if it is free, we will use it to execute commands
+		* if all buffers are in use we then stale the CPU.
+		*/
+
+		/* Let's think in a scenario using double buffering (two render targets):
+		*
+		* We record all commands on the buffer 1
+		* We execute all commands on the buffer 1 
+		* We queue a signal to the fence of the buffer 1 to know when it is done
+		* We queue the buffer 1 to be shown when it is done
+		* We see if the buffer 2 is available
+		* We record all commands in buffer 2
+		* We execute all commands in buffer 2
+		* We signal the fence on buffer 2
+		* We check if the buffer 1 is available
+		* If not, we will wait (stale the CPU) until it is done (when the command queue reaches the Signal(buffer1)
+		* If so, we will do everything again on the buffer 1 and then get the buffer 2
+		* 
+		* We will stale the CPU if the commands on Buffer 1 are still being executed (GPU) and we already recorded all commands to the Buffer 2 (CPU)
+		* and we need a new buffer to record commands. 
+		*/
 	};
 
 	while (true)
