@@ -138,6 +138,8 @@ HANDLE       g_FenceEvent;
 //If we are going to use VSync.
 bool g_VSync = true;
 
+//True when we are in fullscreen mode
+bool g_Fullscreen = false;
 
 //Sometimes we want to use a custom vsync technology, we can let the tearing occur so the application can decide when the vertical refresh should be done
 bool g_TearingSupported = false;
@@ -420,39 +422,48 @@ int main()
 
 	//Create our heap
 	Check(g_Device->CreateDescriptorHeap(&descriptorHeapDesc, IID_PPV_ARGS(&g_RTVDescriptorHeap)));
-	
+
 	//Now we can proceed to create our views (descriptors).
+
+	//For the tutorial's linearity sake, I will not declare and define a function above the main() function. Instead, I will "define a function inside main" through this 
+	//lambda and function pointer
 	//Let's create our Render Target View (a resource where we are gong to render out screen to)
-
-	//Get the size of a RTV on this device. (size is vendor specific)
-	g_RTVDescriptorSize = g_Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-
-	//We get the first handle of the heap, and we will use it to iterate our heap
-	//It is the same idea as taking the first element pointer of an array and adding + 1 to it
-	//Now, we have a pointer (inside this structure) to a descriptor inside the descriptor heap
-	CD3DX12_CPU_DESCRIPTOR_HANDLE firstRTVHandleIndex(g_RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-
-	//One descriptor for each render target buffer 
-	for (uint32_t i = 0; i < g_NumFrames; i++)
+	auto UpdateRenderTargetViews = []()
 	{
-		//Now, we get all the resources (all the backbuffers/render targets) that was created inside our swap chain
-		ID3D12Resource* renderTarget = nullptr;
-		Check(g_SwapChain->GetBuffer(i, IID_PPV_ARGS((&renderTarget))));
+		//Get the size of a RTV on this device. (size is vendor specific)
+		g_RTVDescriptorSize = g_Device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
-		//Now we just need to create the render target view for the swap chain backbuffer resource.
-		//The first parameter is the resource that we are creating the descriptor to
-		//the second one is the description of the resource. Setting it to nullptr will make it to create a default descriptor for the resource
-		//In this case, the resource's internal description is used to create the RTV (when you create a resource, it asks for a bunch of details, it will use those details).
-		//The third parameter is only where we will store the descriptor. We will store it in this specific handle of the heap.
-		g_Device->CreateRenderTargetView(renderTarget, nullptr, firstRTVHandleIndex);
+		//We get the first handle of the heap, and we will use it to iterate our heap
+		//It is the same idea as taking the first element pointer of an array and adding + 1 to it
+		//Now, we have a pointer (inside this structure) to a descriptor inside the descriptor heap
+		CD3DX12_CPU_DESCRIPTOR_HANDLE firstRTVHandleIndex(g_RTVDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 
-		//Now that our render target resources are complete, we can save them for later use.
-		g_BackBuffers[i] = renderTarget;
+		//One descriptor for each render target buffer 
+		for (uint32_t i = 0; i < g_NumFrames; i++)
+		{
+			//Now, we get all the resources (all the backbuffers/render targets) that was created inside our swap chain
+			ID3D12Resource* renderTarget = nullptr;
+			Check(g_SwapChain->GetBuffer(i, IID_PPV_ARGS((&renderTarget))));
 
-		//Let's advance the handles to the available index. So we get a new handle next time. (basically ptr + g_RTVDescriptorSize)
-		firstRTVHandleIndex.Offset(g_RTVDescriptorSize);
-	}
+			//Now we just need to create the render target view for the swap chain backbuffer resource.
+			//The first parameter is the resource that we are creating the descriptor to
+			//the second one is the description of the resource. Setting it to nullptr will make it to create a default descriptor for the resource
+			//In this case, the resource's internal description is used to create the RTV (when you create a resource, it asks for a bunch of details, it will use those details).
+			//The third parameter is only where we will store the descriptor. We will store it in this specific handle of the heap.
+			g_Device->CreateRenderTargetView(renderTarget, nullptr, firstRTVHandleIndex);
+
+			//Now that our render target resources are complete, we can save them for later use.
+			g_BackBuffers[i] = renderTarget;
+
+			//Let's advance the handles to the available index. So we get a new handle next time. (basically ptr + g_RTVDescriptorSize)
+			firstRTVHandleIndex.Offset(g_RTVDescriptorSize);
+		}
+	};
 	
+	//#TODO This will be not needed anymore once we implement the OS msg handle function. Because we will call this inside the Resize message which is always called when the
+	//application is started. As we don't have this function defined yet, this is necessary in order to not crash the engine.
+	UpdateRenderTargetViews();
+
 	//Create a Command Allocator
 	//I already explained what a command allocator is, but as an additional detail, when the GPU finishes to consume all commands inside it
 	//we can reclaim or memory back by calling CommandAllocator->Reset(). We can only call Reset if the GPU finished to use all command allocator commands
@@ -492,8 +503,6 @@ int main()
 
 	D3D_ASSERT(g_FenceEvent, "Failed to create fence event!");
 	
-	//For the tutorial's linearity sake, I will not declare and define a function above the main() function. Instead, I will "define a function inside main" through this 
-	//lambda and function pointer
 	//So we can follow along all the tutorial instead of having to place a function and say "we will come later here, just ignore for now".
 	//And since this is a snippet of code that we will be using frequently, it worths to create a function just for it
 	auto SignalFence = [](ID3D12CommandQueue* commandQueue, ID3D12Fence* fence, uint64_t& fenceValue ) -> uint64_t 
@@ -600,7 +609,7 @@ int main()
 
 		//Now that our back buffer is ready to write, we will write the whole resource to an specific color. This is called "Clean".
 		//we will define a clean color as follows
-		float clearColor[] = { 0.4f, 0.6f, 0.9f, 1.0f };
+		float clearColor[] = { 0.5f, 0.0f, 0.0f, 1.0f };
 
 		//We then get the handle of our resource from the Descriptor Heap by passing the start of the heap (like the address of the first element of an array)
 		//and then we will pass the index that we want to jump forward and the size that we will be using to jump forward (literally like a pointer) 
@@ -682,8 +691,82 @@ int main()
 		Render();
 	}
 
+	//This is the end of our loop. Now, we are going to define functions that we will eventually use.
+	//We will define functions that are not directly related to rendering below. 
+
+	auto Resize = [&FlushCommandQueue, &UpdateRenderTargetViews](uint32_t width, uint32_t height)
+	{
+		if (g_WindowWidth != width || g_WindowHeight != height)
+		{
+			g_WindowWidth = HTUtils::HTMax<uint32_t>(1u, width);
+			g_WindowHeight = HTUtils::HTMax<uint32_t>(1u, height);
+
+			FlushCommandQueue(g_CommandQueue, g_Fence, g_FenceValue, g_FenceEvent);
+
+			for (uint32_t i = 0; i < g_NumFrames; i++)
+			{
+				//#TODO Maybe this is best to have a loop to this release
+				g_BackBuffers[i]->Release();
+				g_FrameFenceValues[i] = g_FrameFenceValues[g_CurrentBackBufferIndex];
+			}
+
+			DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
+			Check(g_SwapChain->GetDesc(&swapChainDesc));
+			Check(g_SwapChain->ResizeBuffers(g_NumFrames, g_WindowWidth, g_WindowHeight, swapChainDesc.BufferDesc.Format, swapChainDesc.Flags));
+			
+			g_CurrentBackBufferIndex = g_SwapChain->GetCurrentBackBufferIndex();
+
+			UpdateRenderTargetViews();
+
+		}
+	};
+
+	auto SetFullscreen = [](bool fullscreen)
+	{
+		if (g_Fullscreen != fullscreen)
+		{
+			g_Fullscreen = fullscreen;
+
+			if (g_Fullscreen)
+			{
+				::GetWindowRect(g_hWnd, &g_WindowRect);
+
+				UINT windowStyle = WS_OVERLAPPEDWINDOW & ~(WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
+				::SetWindowLongW(g_hWnd, GWL_STYLE, windowStyle);
+			
+				HMONITOR hMonitor = ::MonitorFromWindow(g_hWnd, MONITOR_DEFAULTTONEAREST);
+				MONITORINFOEX monitorInfo = {};
+				monitorInfo.cbSize = sizeof(MONITORINFOEX);
+				::GetMonitorInfo(hMonitor, &monitorInfo);
+				
+				::SetWindowPos(g_hWnd, HWND_TOP,
+					monitorInfo.rcMonitor.left,
+					monitorInfo.rcMonitor.top,
+					monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
+					monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
+					SWP_FRAMECHANGED | SWP_NOACTIVATE);
+
+				::ShowWindow(g_hWnd, SW_MAXIMIZE);
+
+			}
+			else
+			{
+				// Restore all the window decorators.
+				::SetWindowLong(g_hWnd, GWL_STYLE, WS_OVERLAPPEDWINDOW);
+
+				::SetWindowPos(g_hWnd, HWND_NOTOPMOST,
+					g_WindowRect.left,
+					g_WindowRect.top,
+					g_WindowRect.right - g_WindowRect.left,
+					g_WindowRect.bottom - g_WindowRect.top,
+					SWP_FRAMECHANGED | SWP_NOACTIVATE);
+
+				::ShowWindow(g_hWnd, SW_NORMAL);
+			}
+		}
+	};
+
+	//Comment all code above and start to make the Window Message Procedure
 
 	return 0;
 }
-
-//We will define functions that are not directly related to rendering below. 
