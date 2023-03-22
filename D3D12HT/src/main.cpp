@@ -201,8 +201,14 @@ int main()
 	
 	//We use the GetSystemMetrics function to retrieve a specific system information. In this case, SM_CXSCREEN and SM_CYSCREEN are used
 	//to retrieve the width and height of the primary display monitor screen in pixels. So we update our screen width and height. It will take the whole screen but it will not be fullscreen.
-	g_WindowWidth = GetSystemMetrics(SM_CXSCREEN);
-	g_WindowHeight = GetSystemMetrics(SM_CYSCREEN);
+	int screenWidth  = GetSystemMetrics(SM_CXSCREEN);
+	int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+
+	RECT windowRect = { 0, 0, static_cast<LONG>(screenWidth), static_cast<LONG>(screenHeight) };
+	::AdjustWindowRect(&windowRect, WS_OVERLAPPEDWINDOW, FALSE);
+
+	g_WindowWidth = windowRect.right - windowRect.left;
+	g_WindowHeight = windowRect.bottom - windowRect.top;
 
 	//#NOTE: Usually we do some calculations to ensure that the window will always be inside screen bounds and at least at the middle (when not occupying the whole screen)
 	//I will not bother to do this here because our main topic is to learn DX12 and this window is good enough for everything we want.
@@ -802,7 +808,9 @@ int main()
 				} break;
 
 				case WM_SYSCHAR: 
-				break;
+				{
+
+				} break;
 
 				case WM_SIZE:
 				{
