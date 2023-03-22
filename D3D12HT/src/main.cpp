@@ -45,7 +45,7 @@ using namespace Microsoft::WRL;
 //For general utilities, like the "max" function (better than include the whole <algorithm>) (=
 #include <util/utils.h>
 
-//This is the number of backbuffers we have. This is, how many targets we are rendering while a target is being shown
+//This is the number of back buffers we have. This is, how many targets we are rendering while a target is being shown
 //While the program is presenting a frame to the screen, we are drawing another one under the hood.
 //i.e 2 = double buffering, 3 = triple buffering etc...
 const uint8_t g_NumFrames = 3;
@@ -144,9 +144,13 @@ bool g_Fullscreen = false;
 //Sometimes we want to use a custom vsync technology, we can let the tearing occur so the application can decide when the vertical refresh should be done
 bool g_TearingSupported = false;
 
-//#TODO: DEFINE THIS BELOW!!! (with proper names etc)
-//This function will handle OS events/messages 
-LRESULT WndProc(HWND a, UINT b, WPARAM c, LPARAM d) { return DefWindowProc(a, b, c, d); };
+
+//This function will handle OS events/messages. This is a forward declaration. It will be defined inside the main function after all directx related functions.
+//std::function<LRESULT(HWND, UINT, WPARAM, LPARAM)> OSMessageHandler;
+LRESULT(*OSMessageHandler)(HWND, UINT, WPARAM, LPARAM);
+
+LRESULT TemporaryWndProc(HWND a, UINT b, WPARAM c, LPARAM d) { return DefWindowProc(a, b, c, d); }
+
 
 int main()
 {
@@ -178,12 +182,12 @@ int main()
 
 	windowClass.cbSize        = sizeof(WNDCLASSEX);             // The size in bytes of this structure.
 	windowClass.style         = CS_HREDRAW | CS_VREDRAW;		// Class style. CS_HREDRAW means that we will redraw all the window if we change the window width (and CS_VREDRAW for height)
-	windowClass.lpfnWndProc   = &WndProc;						// A pointer to the function that will handle the events of this window. We forward decleared it above.
+	windowClass.lpfnWndProc   = &TemporaryWndProc;			    // A pointer to the function that will handle the events of this window. We forward declared it above.
 	windowClass.cbClsExtra    = 0;								// Number of extra bytes to allocate for this class structure, we will not use this.
 	windowClass.cbWndExtra    = 0;								// Number of extra bytes to allocate for this window instance, we will not use this.
 	windowClass.hInstance     = hInstance;						// A handle to the instance that contains the window procedure for the class. We also use the hInstance to identify in case more than one .dll uses the same class name. 
 																// A very simply but informative resource on that (hInstance): https://devblogs.microsoft.com/oldnewthing/20050418-59/?p=35873
-	windowClass.hIcon         = LoadIcon(hInstance, NULL);		// The icon of the window to be loaded, in the top left corner or in the taskbar
+	windowClass.hIcon         = LoadIcon(hInstance, NULL);		// The icon of the window to be loaded, in the top left corner or in the task bar
 	windowClass.hCursor       = LoadCursor(NULL, IDC_ARROW);	// The cursor inside the window, we will be using the default
 	windowClass.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);		// The color of the background or the handle to the brush used to paint the background. We will not use this as we will be doing the paint process ourselves.
 	windowClass.lpszMenuName  = NULL;							// Resource name of the window menu class. We will use the default.
@@ -213,9 +217,6 @@ int main()
 	g_hWnd = CreateWindowEx(WS_EX_OVERLAPPEDWINDOW, windowClass.lpszClassName, "Hello Triangle!", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, g_WindowWidth / 2, g_WindowHeight / 2, NULL, NULL, hInstance, nullptr);
 	
 	D3D_ASSERT(g_hWnd, "Failed to create window!");
-
-	//Show the window just for testing purposes
-	ShowWindow(g_hWnd, SW_SHOW);
 
 	//Now that we have a created window, we can continue to create our D3D12 pipeline. Further on, we will show the window.
 	//It was a short introduction since window creation it is not our focus here but you should find plenty of information on Windows window creation. 
@@ -552,7 +553,7 @@ int main()
 	//Every time this function is called, we sum the frameCounter and the deltaTime to the elapsedSeconds
 	//Eventually, this elapsedSeconds will reach 1 second. Then, we just need to divide the frameCounter to the elapsedSeconds
 	//and we have all the frames we got in one second.
-	auto Update = []()
+	static auto Update = []()
 	{
 		static uint64_t frameCounter = 0;
 		static double elapsedSeconds = 0.0f;
@@ -585,7 +586,7 @@ int main()
 	
 	//For simplicity, I will define the Render function below the main function
 
-	auto Render = [&SignalFence, &WaitForFenceValue]()
+	static auto Render = [&SignalFence, &WaitForFenceValue]()
 	{
 		ID3D12CommandAllocator* commandAllocator = g_CommandAllocators[g_CurrentBackBufferIndex];
 		ID3D12Resource* backBuffer = g_BackBuffers[g_CurrentBackBufferIndex];
@@ -685,16 +686,13 @@ int main()
 		*/
 	};
 
-	while (true)
-	{
-		Update();
-		Render();
-	}
-
 	//This is the end of our loop. Now, we are going to define functions that we will eventually use.
+	
+	// -------------- End of render stage
+	
 	//We will define functions that are not directly related to rendering below. 
 
-	auto Resize = [&FlushCommandQueue, &UpdateRenderTargetViews](uint32_t width, uint32_t height)
+	static auto Resize = [&FlushCommandQueue, &UpdateRenderTargetViews](uint32_t width, uint32_t height)
 	{
 		if (g_WindowWidth != width || g_WindowHeight != height)
 		{
@@ -721,7 +719,7 @@ int main()
 		}
 	};
 
-	auto SetFullscreen = [](bool fullscreen)
+	static auto SetFullscreen = [](bool fullscreen)
 	{
 		if (g_Fullscreen != fullscreen)
 		{
@@ -742,7 +740,7 @@ int main()
 				::SetWindowPos(g_hWnd, HWND_TOP,
 					monitorInfo.rcMonitor.left,
 					monitorInfo.rcMonitor.top,
-					monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
+					monitorInfo.rcMonitor.right  - monitorInfo.rcMonitor.left,
 					monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
 					SWP_FRAMECHANGED | SWP_NOACTIVATE);
 
@@ -757,7 +755,7 @@ int main()
 				::SetWindowPos(g_hWnd, HWND_NOTOPMOST,
 					g_WindowRect.left,
 					g_WindowRect.top,
-					g_WindowRect.right - g_WindowRect.left,
+					g_WindowRect.right  - g_WindowRect.left,
 					g_WindowRect.bottom - g_WindowRect.top,
 					SWP_FRAMECHANGED | SWP_NOACTIVATE);
 
@@ -766,7 +764,91 @@ int main()
 		}
 	};
 
-	//Comment all code above and start to make the Window Message Procedure
+	//#TODO: Comment all code above and start to make the Window Message Procedure
+	OSMessageHandler = [](HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) -> LRESULT
+	{
+		if (g_IsInitialized)
+		{
+			switch (message)
+			{
+				case WM_PAINT:
+				{
+					Update();
+					Render();
+				} break;
+
+				case WM_KEYDOWN: case WM_SYSKEYDOWN:
+				{
+					bool alt = (::GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+
+					switch (wParam)
+					{
+						case 'V': 
+						{
+							g_VSync = !g_VSync;
+						} break;
+
+						case VK_ESCAPE: 
+						{
+							::PostQuitMessage(0);
+						} break;
+
+						case VK_RETURN:
+						{
+							if (alt)
+								SetFullscreen(!g_Fullscreen);
+						} break;
+					}
+				} break;
+
+				case WM_SYSCHAR: 
+				break;
+
+				case WM_SIZE:
+				{
+					RECT clientRect = {};
+					::GetClientRect(g_hWnd, &clientRect);
+
+					int width = clientRect.right - clientRect.left;
+					int height = clientRect.bottom - clientRect.top;
+
+					Resize(width, height);
+
+				} break;
+
+				case WM_DESTROY:
+				{
+					::PostQuitMessage(0);
+				} break;
+
+				default:
+				{
+					return ::DefWindowProc(hwnd, message, wParam, lParam);
+				}
+			}
+		}
+		
+		return ::DefWindowProc(hwnd, message, wParam, lParam);
+	};
+
+	(WNDPROC)SetWindowLongPtr(g_hWnd, GWLP_WNDPROC, (LONG_PTR)OSMessageHandler);
+
+	g_IsInitialized = true;
+
+	::ShowWindow(g_hWnd, SW_SHOW);
+
+	MSG msg = {};
+	while (msg.message != WM_QUIT)
+	{
+		if (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		{
+			::TranslateMessage(&msg);
+			::DispatchMessage(&msg);
+		}
+	}
+
+	FlushCommandQueue(g_CommandQueue, g_Fence, g_FenceValue, g_FenceEvent);
+	::CloseHandle(g_FenceEvent);
 
 	return 0;
 }
