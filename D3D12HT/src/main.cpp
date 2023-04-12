@@ -700,26 +700,39 @@ int main()
 
 	static auto Resize = [&FlushCommandQueue, &UpdateRenderTargetViews](uint32_t width, uint32_t height)
 	{
+		//Resize is kinda of an expensive operation (you need to recreate the buffers etc...) so it is good to check if we are actually resizing to a different size
 		if (g_WindowWidth != width || g_WindowHeight != height)
 		{
-			g_WindowWidth = HTUtils::HTMax<uint32_t>(1u, width);
+			//We don't want negative or zero widths and heights so clamp it
+			g_WindowWidth  = HTUtils::HTMax<uint32_t>(1u, width);
 			g_WindowHeight = HTUtils::HTMax<uint32_t>(1u, height);
 
+			//Since we have to delete our back-buffers/render targets, first we must assure that none of them are being referenced in the GPU
 			FlushCommandQueue(g_CommandQueue, g_Fence, g_FenceValue, g_FenceEvent);
 
 			for (uint32_t i = 0; i < g_NumFrames; i++)
 			{
-				//#TODO Maybe this is best to have a loop to this release
+				//Release all back-buffers
 				g_BackBuffers[i]->Release();
+
+				//Reset all fences to the value of our last fence. So we will all be in the same step when we recreate it.
+				//It is good to reset to the "last" closer value of the fence, because internally on the GPU our fence is with a higher value. 
+				//this way we don't need to wait much to the CPU fence to catch up with the GPU fence
 				g_FrameFenceValues[i] = g_FrameFenceValues[g_CurrentBackBufferIndex];
 			}
 
+			//Resize the buffers using the same descriptors as our older buffers and swap-chain, we are only going to change it's dimensions
 			DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
 			Check(g_SwapChain->GetDesc(&swapChainDesc));
+
+			//We then call ResizeBuffers, as we freed all our backbuffers, this function will create new internal backbuffers for the swap-chain.
+			//We will create it exactly with the same format and we will use the old swapchain flags
 			Check(g_SwapChain->ResizeBuffers(g_NumFrames, g_WindowWidth, g_WindowHeight, swapChainDesc.BufferDesc.Format, swapChainDesc.Flags));
 			
 			g_CurrentBackBufferIndex = g_SwapChain->GetCurrentBackBufferIndex();
 
+			//Create new Views/Descriptors to the new made backbuffers. The new backbuffers will also occupy the same place as the older views.
+			//It is not possible to delete older descriptors but we can overwrite them.
 			UpdateRenderTargetViews();
 
 		}
@@ -727,22 +740,33 @@ int main()
 
 	static auto SetFullscreen = [](bool fullscreen)
 	{
+		//Check if it is a toggle
 		if (g_Fullscreen != fullscreen)
 		{
 			g_Fullscreen = fullscreen;
 
 			if (g_Fullscreen)
 			{
+				//get the actual dimensions
 				::GetWindowRect(g_hWnd, &g_WindowRect);
 
+				//remove all window decorators (bar, title, cross, minimize button etc)
 				UINT windowStyle = WS_OVERLAPPEDWINDOW & ~(WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
+				
+				//set the new style
 				::SetWindowLongW(g_hWnd, GWL_STYLE, windowStyle);
 			
+				//Get the monitor where the window is mostly overlapping
 				HMONITOR hMonitor = ::MonitorFromWindow(g_hWnd, MONITOR_DEFAULTTONEAREST);
+				
+				//get relevant info from this monitor in which the window is mostly on
 				MONITORINFOEX monitorInfo = {};
 				monitorInfo.cbSize = sizeof(MONITORINFOEX);
 				::GetMonitorInfo(hMonitor, &monitorInfo);
 				
+				//Set the window on the begin of the monitor's screen and make it to cover it all
+				//SWP_FRAMECHANGED will make the client area of the window to be calculated even if we are not necessarily changing its dimensions
+				//SWP_NOACTIVATE makes the window to not overlap all other windows (needs to check the hWndInsertAfter parameter)
 				::SetWindowPos(g_hWnd, HWND_TOP,
 					monitorInfo.rcMonitor.left,
 					monitorInfo.rcMonitor.top,
@@ -750,6 +774,7 @@ int main()
 					monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
 					SWP_FRAMECHANGED | SWP_NOACTIVATE);
 
+				//show the window as a maximized window
 				::ShowWindow(g_hWnd, SW_MAXIMIZE);
 
 			}
@@ -758,6 +783,7 @@ int main()
 				// Restore all the window decorators.
 				::SetWindowLong(g_hWnd, GWL_STYLE, WS_OVERLAPPEDWINDOW);
 
+				//back the window to the cached (when was on normal size) position and size values
 				::SetWindowPos(g_hWnd, HWND_NOTOPMOST,
 					g_WindowRect.left,
 					g_WindowRect.top,
@@ -765,24 +791,27 @@ int main()
 					g_WindowRect.bottom - g_WindowRect.top,
 					SWP_FRAMECHANGED | SWP_NOACTIVATE);
 
+				//show the window as a normal window
 				::ShowWindow(g_hWnd, SW_NORMAL);
 			}
 		}
 	};
 
-	//#TODO: Comment all code above and start to make the Window Message Procedure
 	OSMessageHandler = [](HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) -> LRESULT
 	{
+		//Check if our graphics pipeline is initialized before trying to resize anything 
 		if (g_IsInitialized)
 		{
 			switch (message)
 			{
+				//WM_PAINT is being called every frame basically, so use this to update and draw stuff on the screen
 				case WM_PAINT:
 				{
 					Update();
 					Render();
 				} break;
 
+				//Check if for keys 'V', 'ESC' and ALT + ENTER to toggle vsync, quit the app and toggle fullscreen respectively
 				case WM_KEYDOWN: case WM_SYSKEYDOWN:
 				{
 					bool alt = (::GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
@@ -807,11 +836,17 @@ int main()
 					}
 				} break;
 
+				case WM_CHAR:
+				{
+					
+				} break;
+
 				case WM_SYSCHAR: 
 				{
 
 				} break;
 
+				//check the new size of the screen and resize the swapchain to the new size
 				case WM_SIZE:
 				{
 					RECT clientRect = {};
@@ -835,27 +870,42 @@ int main()
 				}
 			}
 		}
+		else
+		{
+			return ::DefWindowProc(hwnd, message, wParam, lParam);
+		}
 		
-		return ::DefWindowProc(hwnd, message, wParam, lParam);
+		return 0;
 	};
 
+	//Now we will be using the Message Handler that we defined above to handle our OS messages.
 	(WNDPROC)SetWindowLongPtr(g_hWnd, GWLP_WNDPROC, (LONG_PTR)OSMessageHandler);
 
+	//Everything is initialized.
 	g_IsInitialized = true;
 
 	::ShowWindow(g_hWnd, SW_SHOW);
 
+
 	MSG msg = {};
+	//Run the app until we got a WM_QUIT. WM_QUIT messages can be get through the PostQuitMessage(0) method.
 	while (msg.message != WM_QUIT)
 	{
+		//Take a peek to see if is there any message to process. PeekMessage will not block the application if isn't there any messages
 		if (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 		{
+			//Translate some keys messages to character messages
 			::TranslateMessage(&msg);
+
+			//send the translated message to the message handler
 			::DispatchMessage(&msg);
 		}
 	}
 
+	//before closing the application, let's wait and flush the app, thus assuring that we will have a clean close.
 	FlushCommandQueue(g_CommandQueue, g_Fence, g_FenceValue, g_FenceEvent);
+
+	//close our fence event and we're done!
 	::CloseHandle(g_FenceEvent);
 
 	return 0;
